@@ -1,0 +1,1074 @@
+---
+title: "Data insight Unive Stad en Land"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+#####Laden van R-packages
+```{r}
+# install.packages(c("tidyverse","dplyr","lubridate","plyr","corrgram","mclust","ISLR","cluster","Rtsne","ggplot2","mclust", "vegan", "reshape2", "gridExtra"))
+#install.packages("plyr")
+#install.packages("RColorBrewer")
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(RColorBrewer)
+#library(plyr) - niet nodig
+#library(corrgram)
+#library(mclust)
+#library(ISLR) 
+#library(cluster) 
+#library(Rtsne)
+library(ggplot2) 
+#library(mclust)
+#library(vegan) 
+library(reshape2)
+#library(gridExtra)
+
+```
+
+#####Parameters data-wrangling:    
+- t0: referentie datum  
+- t1: referentie datum minus 1 observatie-periode (~ jaar)  
+- data_stage: droplocatie bron-bestanden  
+- src_ : naam bronbestanden  
+
+```{r}
+t0 <- as.Date('2017-09-27') # date-format: yyyy-mm-dd
+t1 <- as.Date('2016-04-19')
+# locatie waar de bron-bestanden gedeponeerd worden
+data_stage <- "C:/Users/BartHaenen/Desktop/stx/"
+# naamgeving bron-bestand
+src_polis_t0 <- "20170927_polissen_Bart.csv"
+src_polis_t1 <- "20160419_polissen_Bart.csv"
+src_klant_t0 <- "20170927_klanten_Bart.csv"
+src_klant_t1 <- "20160419_klanten_Bart.csv"
+src_ref_product <-"ref_product.csv"
+src_contact_sl <- "2017-04_DDP_Portaal.csv"
+src_ref_camp_sl <- "Overzicht_Campagnecodes_2017.csv"
+```
+
+#####Laden van de bron-bestanden :   
++ klant 2016  
++ klant 2017  
++ polis 2016  
++ polis 2017  
++ product code vertaal tabel  
++ contacten unive stad en land  
++ actiecodering  
+
+```{r}
+
+
+# laden van bron-bestanden in tibble-formaat
+polis_t0 <- as_tibble(read_csv2(paste(data_stage, src_polis_t0, sep="")))
+polis_t1 <- as_tibble(read_csv2(paste(data_stage, src_polis_t1, sep="")))
+klant_t0 <- as_tibble(read_csv2(paste(data_stage, src_klant_t0, sep="")))
+klant_t1 <- as_tibble(read_csv2(paste(data_stage, src_klant_t1, sep=""))) # probleem met DCK_RELATIEDUUR formaat, opgevangen cleansing
+  #, col_types = c(DCK_RELATIEDUUR = col_character())))
+  #,col_names = TRUE, col_types = NULL, locale (decimal_mark=".")))
+ref_product <-as_tibble(read_csv2(paste(data_stage, src_ref_product, sep="")))
+contact_sl <- as_tibble(read_csv2(paste(data_stage, src_contact_sl, sep=""), col_names = FALSE))
+ref_camp_sl <- as_tibble(read_csv2(paste(data_stage, src_ref_camp_sl, sep=""), col_names = FALSE))
+# creeer werk-bestand gebaseerd op bron-bestanden
+ref_merk <- select(ref_product, productcode, merk)
+ref_merk <- distinct(ref_merk)
+# TO DO: check of de regel van Peter: bron: ATS & productcode met #D als Unive kan worden geïmplementeerd
+
+# file nick: vervuiling <- read.csv(file=paste(data_stage,"vervuilingklanten.csv", sep=""), sep=';')
+
+#copy fallback files
+#klant_t0_bckup <-klant_t0
+#klant_t1_bckup<- klant_t1
+#polis_t0_bckup <- polis_t0
+#polis_t1_bckup <- polis_t1
+```
+
+#####Aligneren record lay-out:  
+Standardiseren kolom-namen  
++ conventie: lower case, geen spatie  
++ klanten 2017 is de referentie voor klanten 2016, waar mogelijk worden de namen gealigneerd op de 2017 namen  
++ polissen 2017 is de referentie voor polissen 2016
+
+```{r}
+
+klant_t0 <- rename(klant_t0, 
+                        steekproefid = SteekproefID,
+klantnummer = BK_UniveRelatienummer,
+persoonbedrijf = PersoonBedrijf,
+achternaam = Achternaam,
+adresregelaanhef = AdresregelAanhef,
+adresregelnaam = AdresregelNaam,
+adresregelstraat = AdresregelStraat,
+adresregelplaats = AdresregelPlaats,
+huisnummer = Huisnummer,
+huisnummertoevoeging = HuisnummerToevoeging,
+straat = Straat,
+woonplaats = Woonplaats,
+wijk = Wijk,
+postcode = Postcode,
+land = Land,
+indicatieisbuitenlandsadres = IndicatieIsbuitenlandsadres,
+telefoonnummer = Telefoonnummer,
+emailadres = EMailAdres,
+geslacht = Geslacht,
+geboortedatum = Geboortedatum,
+gezinssamenstelling = Gezinssamenstelling,
+indicatieoverleden = IndicatieOverleden,
+datumoverlijden = DatumOverlijden,
+bk_kvknummer = BK_KVKnummer,
+burgerlijkestaat = BurgerlijkeStaat,
+datuminganglidmaatschap = DatumIngangLidmaatschap,
+datumeindelidmaatschap = DatumEindeLidmaatschap,
+werkgebiedeigenaar = WerkgebiedEigenaar,
+werkgebiedeigenaarnaam = WerkgebiedEigenaarNaam,
+klanteigenaar = KlantEigenaar,
+vestiging = Vestiging,
+klantadviseur = KlantAdviseur,
+klantadviseurintermediair = KlantAdviseurIntermediair,
+jaarmaand = JaarMaand,
+versiedatum = VersieDatum,
+bk_kixcode = BK_KixCode,
+klantdoelgroep = KlantDoelgroep,
+klantsegment = KlantSegment,
+klantwaardegroep = KlantWaardeGroep,
+relatieduur = Relatieduur,
+leeftijd = Leeftijd,
+relatieduurgroep = RelatieduurGroep,
+polisdichtheidgroep = PolisdichtheidGroep,
+leeftijdsgroep = LeeftijdsGroep,
+begindatumeerstepolis = BeginDatumEerstePolis,
+einddatumlaatstepolis = EindDatumLaatstePolis,
+segmentwaarde1 = SegmentWaarde1,
+segmentwaarde2 = SegmentWaarde2,
+segmentwaarde3 = SegmentWaarde3,
+mijnunivegebruikersnaam = MijnUniveGebruikersnaam,
+mijnunivedatumlaatstelogin = MijnUniveDatumLaatsteLogin,
+mijnunivedatumaanmaak = MijnUniveDatumAanmaak,
+aantalactievepolissen = AantalActievePolissen,
+aantalactievepolissenunive = AantalActievePolissenUnive,
+aantalactievepolissenschade = AantalActievePolissenSchade,
+aantalaanhanger = AantalAanhanger,
+aantalaanvullingzorgmodule = AantalAanvullingZorgmodule,
+aantalabobliksemafleiding = AantalAboBliksemAfleiding,
+aantalaboblusapparatuur = AantalAboBlusapparatuur,
+aantalaov = AantalAov,
+aantalarbeidsongeschiktheid = AantalArbeidsongeschiktheid,
+aantalauto = AantalAuto,
+aantalavb = AantalAvb,
+aantalavp = AantalAvp,
+aantalbav = AantalBAV,
+aantalbedrijfsactiviteiten = AantalBedrijfsactiviteiten,
+aantalbedrijfsmiddelen = AantalBedrijfsmiddelen,
+aantalbedrijfsschade = AantalBedrijfsschade,
+aantalbedrijfsschadeverzekering = AantalBedrijfsschadeverzekering,
+aantalbestelauto = AantalBestelauto,
+aantalboot = AantalBoot,
+aantalbromfiets = AantalBromfiets,
+aantalcamper = AantalCamper,
+aantalcar = AantalCar,
+aantalcaravan = AantalCaravan,
+aantalcollectieveongevallen = AantalCollectieveOngevallen,
+aantalcomputer = AantalComputer,
+aantaldieren = AantalDieren,
+aantaldiversenbrand = AantalDiversenBrand,
+aantaleigenvervoer = AantalEigenVervoer,
+aantalelectronica = AantalElectronica,
+aantalexpatverzekering = AantalExpatverzekering,
+aantalfiets = AantalFiets,
+aantalfinancieel = AantalFinancieel,
+aantalfraude = AantalFraude,
+aantalgarage = AantalGarage,
+aantalgebouwen = AantalGebouwen,
+aantalgebouwenverzekering = AantalGebouwenVerzekering,
+aantalgeld = AantalGeld,
+aantalgewastevelde = AantalGewasTeVelde,
+aantalgewassenonderglas = AantalGewassenOnderGlas,
+aantalgezondheid = AantalGezondheid,
+aantalglasoftuinbouwverzekering = AantalGlasOfTuinbouwverzekering,
+aantalglasverzekering = AantalGlasverzekering,
+aantalgoederen = AantalGoederen,
+aantalhagelschade = AantalHagelschade,
+aantalhuurderspakket = AantalHuurderspakket,
+aantalhypotheek = AantalHypotheek,
+aantalincassodekking = AantalIncassodekking,
+aantalinkomen = AantalInkomen,
+aantalinventaris = AantalInventaris,
+aantalkapitaalgroei = AantalKapitaalgroei,
+aantalkassen = AantalKassen,
+aantalkostbaarheden = AantalKostbaarheden,
+aantallandbouwwerktuigen = AantalLandbouwwerktuigen,
+aantalmachinebreuk = AantalMachinebreuk,
+aantalmedischevaria = AantalMedischeVaria,
+aantalmotor = AantalMotor,
+aantalmotorrijtuigen = AantalMotorrijtuigen,
+aantalmsv = AantalMsv,
+aantaloldtimer = AantalOldtimer,
+aantalonbekend = AantalOnbekend,
+aantalongevallen = AantalOngevallen,
+aantalopruimingskostenverzekering = AantalOpruimingskostenverzekering,
+aantalpensioen = AantalPensioen,
+aantalpersoneel = AantalPersoneel,
+aantalrechtsbijstandzakelijk = AantalRechtsbijstandZakelijk,
+aantalrechtsbijstand = AantalRechtsbijstand,
+aantalrechtszekerheid = AantalRechtszekerheid,
+aantalreiskort = AantalReisKort,
+aantalreis = AantalReis,
+aantalrijwiel = AantalRijwiel,
+aantalroerendezaken = AantalRoerendeZaken,
+aantalroerendezakenverzekering = AantalRoerendeZakenverzekering,
+aantaltraktor = AantalTraktor,
+aantaltransport = AantalTransport,
+aantaluitvaart = AantalUitvaart,
+aantalvaartuigen = AantalVaartuigen,
+aantalvervoer = AantalVervoer,
+aantalvervoerzakelijk = AantalVervoerZakelijk,
+aantalvrachtauto = AantalVrachtauto,
+aantalvrijetijd = AantalVrijeTijd,
+aantalwerkmateriaal = AantalWerkmateriaal,
+aantalwga = AantalWGA,
+aantalwia = AantalWIA,
+aantalwonen = AantalWonen,
+aantalwoonlastenverzekering = AantalWoonlastenverzekering,
+aantalzeilplank = AantalZeilplank,
+aantalziekteverzuim = AantalZiekteverzuim,
+aantalzorgaanvullenddoelgroeppakket = AantalZorgAanvullendDoelgroeppakket,
+aantalzorgaanvullendmodulair = AantalZorgAanvullendModulair,
+aantalzorgaanvullendzorgzaam = AantalZorgAanvullendZorgzaam,
+aantalzorgaanvullend = AantalZorgAanvullend,
+aantalzorgbasis = AantalZorgBasis,
+aantalzorgtandmodulair = AantalZorgTandModulair,
+aantalproducten = AantalProducten,
+bdrbasispremie = BdrBasisPremie,
+bdreindpremie = BdrEindPremie,
+bdreindpremiezonderzorg = BdrEindPremieZonderzorg,
+aantalklantwaardecluster = AantalKlantwaardeCluster,
+indicatiehypotheek = IndicatieHypotheek,
+indicatieactieveklant = IndicatieActieveKlant,
+indicatieschadeklant = IndicatieSchadeKlant,
+indicatiezorgklant = IndicatieZorgKlant,
+indicatienieuweklant = IndicatieNieuweKlant,
+indicatieexklant = IndicatieExKlant,
+indicatiegeheimtelefoonnummer = IndicatieGeheimTelefoonnummer,
+indicatielid = IndicatieLid,
+indicatieondernemer = IndicatieOndernemer,
+indicatiebtwplichtig = IndicatieBTWPlichtig,
+indicatiecollectieveklant = IndicatieCollectieveKlant,
+indicatiegeenmailing = IndicatieGeenMailing,
+indicatienietemailen = IndicatieNietEmailen,
+indicatienietbellen = IndicatieNietBellen,
+indicatieschadeverloop = Indicatieschadeverloop,
+indicatienietbijsluiten = IndicatieNietBijsluiten,
+indicatiegeennieuwsbrief = IndicatieGeenNieuwsbrief,
+indicatiebelmeniet = IndicatieBelMeNiet,
+indicatieheeftemail = IndicatieHeeftEmail,
+indicatieadrescorrect = IndicatieAdresCorrect,
+indicatieoverledenvoordeur = IndicatieOverledenVoordeur,
+indicatiemijnunivegeblokkeerd = IndicatieMijnUniveGeblokkeerd,
+indicatiemijnunivegeverifieerd = IndicatieMijnUniveGeverifieerd,
+indicatiemijnuniveaccountgeldig = IndicatieMijnUniveAccountGeldig,
+mijnuniveaccountcommercieeloptin = MijnUniveAccountCommercieelOptIn,
+indicatieunivemedewerker = IndicatieUniveMedewerker,
+indicatiegeheimadres = IndicatieGeheimAdres,
+indicatieemailgeheim = IndicatieEmailGeheim,
+indicatiecommercieleblokkadeemail = IndicatieCommercieleBlokkadeEmail,
+indicatiecommercieleblokkadetelefoon = IndicatieCommercieleBlokkadeTelefoon,
+indicatiecommercieleblokkadepost = IndicatieCommercieleBlokkadePost,
+indicatieblokkade = IndicatieBlokkade,
+rangaanspreekpartnervoordeur = RangAanspreekpartnerVoordeur,
+datumlaatsteonderhoudsgesprek = DatumLaatsteOnderhoudsgesprek,
+datumkomendonderhoudsgesprek = DatumKomendOnderhoudsgesprek)
+
+klant_t1 <- rename(klant_t1, 
+                   versiedatum = DCK_STAND_DATABASE,
+klantnummer = DCK_UNI_CLIENTNUMMER,
+indicatieactieveklant = DCK_ACTIEVE_CLIENT,
+klantsegment = DCK_KLANTSEGMENT,
+leeftijd = DCK_LEEFTIJD,
+geboortedatum = DCK_GEBOORTEDATUM,
+klanteigenaar = DCK_EIGENAAR_CLIENT,
+werkgebiedeigenaar = DCK_EIGENAAR_WERKGEBIED,
+indicatieblokkade = DCK_BLOKKADE,
+indicatieoverleden = DCK_OVERLEDEN,
+dck_commerciele_blokkade = DCK_COMMERCIELE_BLOKKADE,
+indicatieadrescorrect = DCK_ADRES_CORRECT,
+dck_relatieduur = DCK_RELATIEDUUR,
+dck_solo_uzm = DCK_SOLO_UZM,
+burgerlijkestaat = DCK_BURGERLIJKE_STAAT,
+dck_uni_voordeurnummer = DCK_UNI_VOORDEURNUMMER,
+rangaanspreekpartnervoordeur = DCK_RANKING_OUDSTE_CLIENT_VOORDEUR,
+geslacht = DCK_GESLACHT,
+uucn_voorletters = UUCN_VOORLETTERS,
+uucn_tussenvoegsel = UUCN_TUSSENVOEGSEL,
+uucn_naam = UUCN_NAAM,
+huisnummer = UUCN_HUISNUMMER,
+huisnummertoevoeging = UUCN_TOEVOEGING_NUMMER,
+postcode = UUCN_POSTCODE,
+woonplaats = UUCN_WOONPLAATS,
+uucn_telefoonnummer = UUCN_TELEFOONNUMMER,
+uucn_adresregel1_naam = UUCN_ADRESREGEL1_NAAM,
+uucn_adresregel2_straat = UUCN_ADRESREGEL2_STRAAT,
+uucn_adresregel3_plaats = UUCN_ADRESREGEL3_PLAATS,
+uucn_adresregel4_aanhef = UUCN_ADRESREGEL4_AANHEF,
+vestiging = DCV_VESTIGING,
+klantwaardegroep = KW_KLANTWAARDE,
+emailadres = UUCN_PRIVE_EMAILADRES,
+uucn_zakelijk_emailadres = UUCN_ZAKELIJK_EMAILADRES,
+uucn_prive_mobiel_telefoonnr = UUCN_PRIVE_MOBIEL_TELEFOONNR,
+uucn_zakelijk_mobiel_telefoonnr = UUCN_ZAKELIJK_MOBIEL_TELEFOONNR,
+crk_segmentwaarde_2 = CRK_SEGMENTWAARDE_2,
+crk_segmentwaarde_3 = CRK_SEGMENTWAARDE_3)
+
+polis_t0 <- rename(polis_t0,
+                   bron = Bron,
+ak_polis = AK_Polis,
+ak_polisversie = AK_PolisVersie,
+bronpolisnummer = BronPolisnummer,
+polisnummer = BK_UnivePolisnummer,
+bronrelatienummer = BronRelatienummer,
+klantnummer = BK_UniveRelatienummer,
+ingangsdatumpolis = IngangsdatumPolis,
+einddatumpolis = EinddatumPolis,
+herkomst = Herkomst,
+indicatieeerstepolis = IndicatieEerstePolis,
+indicatielaatstepolis = IndicatieLaatstePolis,
+isexternepolis = IsExternePolis,
+externpolisnummer = ExternPolisnummer,
+communicatievoorkeur = CommunicatieVoorkeur,
+merk = Merk,
+vorigeprolongatiedatum = VorigeProlongatiedatum,
+eerstvolgendeprolongatiedatum = EerstvolgendeProlongatiedatum,
+betaaltermijn = Betaaltermijn,
+betaalwijze = Betaalwijze,
+rekeningnummer = Rekeningnummer,
+indicatiepakket = IndicatiePakket,
+indicatieonderdeelpakket = IndicatieOnderdeelPakket,
+ak_pakket_polis = AK_Pakket_Polis,
+indicatiepakketkorting = IndicatiePakketKorting,
+indicatiemigratie = IndicatieMigratie,
+ak_datum = AK_Datum,
+jaarmaand = JaarMaand,
+actief = Actief,
+polisstatus = PolisStatus,
+productvariant = ProductVariant,
+ak_postcode = AK_Postcode,
+bk_intermediair = BK_Intermediair,
+vestigingnaam = VestigingNaam,
+indicatiecollectief = IndicatieCollectief,
+ak_collectief = AK_Collectief,
+collectiefnummer = Collectiefnummer,
+ak_product = AK_Product,
+productcode = ProductCode,
+hoofdbranche = Hoofdbranche,
+commercieelproduct = CommercieelProduct,
+bk_verzekeraar = BK_Verzekeraar,
+businessunit = BusinessUnit,
+bdrbasispremie = BdrBasisPremie,
+bdrbrutopremie = BdrBrutoPremie,
+bdrnettopremie = BdrNettoPremie,
+bdrprovisie = BdrProvisie,
+bdreindpremie = BdrEindPremie,
+polisduur = Polisduur)
+
+polis_t1 <- rename(polis_t1,
+                   klantnummer = DPK_UNI_CLIENTNUMMER,
+polisnummer = DPK_UNI_POLISNUMMER,
+externpolisnummer = DPK_EXTERN_POLISNUMMER,
+bron = DPK_BRONSYSTEEM,
+bronrelatienummer = DPK_BRON_CLIENTNUMMER,
+actief = DPK_POLIS_ACTIEF,
+bk_intermediair = DPK_EIGENAAR_POLIS,
+dpk_code_product = DPK_CODE_PRODUCT,
+productomschrijving = PRODUCTOMSCHRIJVING,
+dpk_product_groep = DPK_PRODUCT_GROEP,
+productgroepomschrijving = PRODUCTGROEPOMSCHRIJVING,
+ingangsdatumpolis = DPK_DATUM_BEGIN,
+einddatumpolis = DPK_DATUM_EINDE,
+bdrnettopremie = DPK_NETTO_PREMIE,
+collectiefnummer = DPK_CONTRACTNUMMER_COLLECTIEF,
+dpk_indicatie_inboedel_objecten = DPK_INDICATIE_INBOEDEL_OBJECTEN,
+dpk_indicatie_opstal_objecten = DPK_INDICATIE_OPSTAL_OBJECTEN)
+
+contact_sl <- rename(contact_sl,
+                     verzoekid = X1,
+verzoekdatumcreatie = X2,
+verzoekresultaat = X3,
+notitiecreatiemedewerker = X4,
+verzoektypeomschrijving = X5,
+productomschrijving = X6,
+onderwerpomschrijving = X7,
+subonderwerpomschrijving = X8,
+campagneomschrijving = X9,
+klantnummer = X10,
+klantnaam = X11,
+emailzakelijk = X12,
+emailprive = X13,
+segmentwaarde1 = X14,
+segmentwaarde2 = X15,
+segmentwaarde3 = X16,
+notitieid = X17,
+notitiecreatiedatum = X18,
+medewerkeractietoegewezen = X19,
+gebruikeractieuitgevoerd = X20,
+prioriteit = X21,
+kanaal = X22,
+actietype = X23,
+actiestatus = X24,
+actiedatumgepland = X25,
+actiedatumrealisatie = X26,
+aantaldagenopen = X27,
+postcode = X28,
+emailvastgelegdopnotitiedatum = X29)
+
+ref_camp_sl <- rename(ref_camp_sl,
+                     campagnenaam = X1,
+campagneveldgevuldmet = X2,
+actiewijzenaan = X3,
+kanaal = X4,
+typeverzoek = X5,
+startactiesinportaal = X6,
+ophalenresultaat = X7,
+opmerkingenveld = X8,
+selectiecriteria = X9,
+herkomstdata = X10)
+```
+#####Cleansing:  
+Formatteren variabelen:  
++ getallen  
++ datum
+
+Standardiseren waarden van belangrijke variabelen:  
++ klantsegment - waarden: PAR -> Particulier  
++ ...
+
+Uniformisering product informatie:  
++ product code vertaling 2016, 2017: 1 enkel product referentie om polissen te categoriseren  
++ 1 merk per product: identificatie van zekur klanten vergemakkelijken, eenduidige relatie product en verzekeraar  
+
+Ontdubbelen:  
++ actie codering tabel bevat dubbels op campagnenaam
+
+```{r}
+klant_t0$begindatumeerstepolis <- as.Date(klant_t0$begindatumeerstepolis, format = "%d/%m/%Y")
+klant_t0$einddatumlaatstepolis <- as.Date(klant_t0$einddatumlaatstepolis, format = "%d/%m/%Y")
+# noot: work-around om probleem van bron-veld dck_relatieduur (decimaal wordt niet meegenomen) op te lossen
+klant_t1$dck_relatieduur <- klant_t1$dck_relatieduur/100
+klant_t1$relatieduur <- round(klant_t1$dck_relatieduur)
+
+polis_t0$bdrbasispremie <- as.numeric(polis_t0$bdrbasispremie)
+polis_t0$bdrbrutopremie <- as.numeric(polis_t0$bdrbrutopremie)
+polis_t0$bdrnettopremie <- as.numeric(polis_t0$bdrnettopremie)
+polis_t0$bdrprovisie <- as.numeric(polis_t0$bdrprovisie)
+polis_t0$bdreindpremie <- as.numeric(polis_t0$bdreindpremie)
+polis_t0$polisduur <- as.numeric(polis_t0$polisduur)
+
+polis_t1$bdrnettopremie <- as.numeric(polis_t1$bdrnettopremie)
+
+polis_t0$ingangsdatumpolis <- as.Date(polis_t0$ingangsdatumpolis, format = "%d/%m/%Y")
+polis_t0$einddatumpolis <- as.Date(polis_t0$einddatumpolis, format = "%d/%m/%Y")
+polis_t0$vorigeprolongatiedatum <- as.Date(polis_t0$vorigeprolongatiedatum, format = "%d/%m/%Y")
+polis_t0$eerstvolgendeprolongatiedatum <- as.Date(polis_t0$eerstvolgendeprolongatiedatum, format = "%d/%m/%Y")
+
+polis_t1$ingangsdatumpolis <- as.Date(polis_t1$ingangsdatumpolis, format = "%d/%m/%Y")
+polis_t1$einddatumpolis <- as.Date(polis_t1$einddatumpolis, format = "%d/%m/%Y")
+
+contact_sl$verzoekdatumcreatie <- as.Date(contact_sl$verzoekdatumcreatie, format = "%d-%m-%Y" )
+contact_sl$notitiecreatiedatum <- as.Date(contact_sl$notitiecreatiedatum, format = "%d-%m-%Y" )
+contact_sl$actiedatumgepland <- as.Date(contact_sl$actiedatumgepland, format = "%d-%m-%Y" )
+contact_sl$actiedatumrealisatie <- as.Date(contact_sl$actiedatumrealisatie, format = "%d-%m-%Y" )
+
+
+klant_t1$klantsegment <- recode (klant_t1$klantsegment, "PAR" = "Particulier", .default = klant_t1$klantsegment )
+
+polis_t0 <- rename(polis_t0, merk_src = merk)
+polis_t0 <- left_join(polis_t0, ref_merk, by = "productcode")
+polis_t1 <- left_join(polis_t1, ref_product, by = "dpk_code_product")
+
+ref_camp_sl_dist <- ref_camp_sl %>%
+  select(campagnenaam) %>%
+  distinct(campagnenaam)
+ref_camp_sl_dist$ind_camp_sl <- 1
+```
+
+#####Features toevoegen aan bron-bestanden   
++ polis t1 bestand: polis duur  
++ klant t1 : begin datum eerste polis, eind datum eerste polis  
++ contact_sl : indicatie of een verzoek gedaan werd in het kader van een campagne  
+
+```{r}
+polis_t1$polisduur <- round(interval(polis_t1$ingangsdatumpolis, t1) / years(1))
+
+klantpolisdatum_t1 <- polis_t1 %>%
+  group_by(klantnummer) %>%
+  summarise(begindatumeerstepolis = min(ingangsdatumpolis),
+            einddatumlaatstepolis = max(einddatumpolis))
+#klantpolisdatum_t1$relatieduur <- round(interval(klantpolisdatum_t1$begindatumeerstepolis, t1) / years(1))
+klant_t1 <- left_join(klant_t1, klantpolisdatum_t1, by = 'klantnummer')
+
+contact_sl <- left_join(contact_sl, ref_camp_sl_dist, by = c('campagneomschrijving' = 'campagnenaam') )
+```
+
+#####Features polis:  
+Creëeren van categorieën:  
++ duurzaamheids-categorieën:    
+  - auto : commercieel product: Auto  
+  - brand : commerciële producten: Kostbaarheden, Wonen  
+  - zorg : commerciële producten: Zorg Aanvullend, Zorg Aanvullend Doelgroeppakket, Zorg Aanvullend Modulair, Zorg Aanvullend Zorgzaam, Zorg Basis, Zorg Tand Modulair  
+    - zorg basis: commercieel product: Zorg Basis  
++ duurzaamheidswaarde: hoeveel duurzame poliscategorieën de klant heeft (maximum 3)  
++ ZEKUR identificatie:  voor alle polissen van het merk ZEKUR  
+
+Voor elk van de categorieën creatie van volgende kpi's:  
++ indicatie klantniveau  
++ totaal aantal polissen die een klant heeft  
++ het netto premie bedrag die de klant betaald  
+
+Het polis bestand op de meest recente datum:
+
+```{r}
+# creeer polis op klant-niveau bestand van referentie datum
+polisklant_t0 <- polis_t0 %>%
+  group_by(klantnummer) %>%
+  summarise(tot_polis = n(),
+            tot_premie = sum (bdrnettopremie, na.rm = TRUE))
+polisklant_zorg_t0 <- polis_t0 %>%
+  filter (commercieelproduct %in% c('Zorg Aanvullend', 'Zorg Aanvullend Doelgroeppakket', 'Zorg Aanvullend Modulair', 'Zorg Aanvullend Zorgzaam', 'Zorg Basis', 'Zorg Tand Modulair')) %>%
+  group_by(klantnummer) %>%
+  summarise(tot_zorg = n(),
+            tot_zorg_premie = sum(bdrnettopremie, na.rm = TRUE))
+polisklant_zorgbasis_t0 <- polis_t0 %>%
+  filter (commercieelproduct=='Zorg Basis') %>%
+  group_by(klantnummer) %>%
+  summarise(tot_zorgbasis = n(),
+            tot_zorgbasis_premie = sum (bdrnettopremie, na.rm = TRUE))
+polisklant_zorgbasis_t0$ind_zorgbasis <- 1
+polisklant_zekur_t0 <- polis_t0 %>%
+  filter (merk=='ZEKUR') %>%
+  group_by(klantnummer) %>%
+  summarise(tot_zekur = n(),
+            tot_zekur_premie = sum(bdrnettopremie, na.rm = TRUE))
+polisklant_auto_t0 <- polis_t0 %>%
+  filter (commercieelproduct=='Auto') %>%
+  group_by(klantnummer) %>%
+  summarise(tot_auto = n(),
+            tot_auto_premie = sum(bdrnettopremie, na.rm = TRUE))
+polisklant_auto_t0$ind_auto <- 1
+polisklant_brand_t0 <- polis_t0 %>%
+  filter (commercieelproduct %in% c('Kostbaarheden', 'Wonen')) %>%
+  group_by(klantnummer) %>%
+  summarise(tot_brand = n(),
+            tot_brand_premie = sum (bdrnettopremie, na.rm = TRUE))
+polisklant_brand_t0$ind_brand <- 1
+
+polisklant_t0_tot <- polisklant_t0
+polisklant_t0_tot <- full_join(polisklant_t0_tot, polisklant_zorg_t0, by= "klantnummer")
+polisklant_t0_tot <- full_join(polisklant_t0_tot, polisklant_zorgbasis_t0, by= "klantnummer")
+polisklant_t0_tot <- full_join(polisklant_t0_tot, polisklant_zekur_t0, by= "klantnummer")
+polisklant_t0_tot <- full_join(polisklant_t0_tot, polisklant_auto_t0, by= "klantnummer")
+polisklant_t0_tot <- full_join(polisklant_t0_tot, polisklant_brand_t0, by= "klantnummer")
+polisklant_t0_tot$ind_zekur_excl <- if_else (polisklant_t0_tot$tot_zekur==polisklant_t0_tot$tot_polis, 1,0)
+polisklant_t0_tot <- polisklant_t0_tot %>% mutate_all(funs(replace(., is.na(.), 0)))
+polisklant_t0_tot$duurzaamheidswaarde <- polisklant_t0_tot$ind_auto + polisklant_t0_tot$ind_brand + polisklant_t0_tot$ind_zorgbasis
+polisklant_t0_tot$duurzaamheidswaarde_premie <- polisklant_t0_tot$tot_auto_premie + polisklant_t0_tot$tot_brand_premie +  polisklant_t0_tot$tot_zorgbasis_premie
+polisklant_t0 <- polisklant_t0_tot
+rm(polisklant_auto_t0, polisklant_brand_t0, polisklant_zekur_t0, polisklant_zorg_t0, polisklant_zorgbasis_t0, polisklant_t0_tot)
+```
+```{r}
+summarise_all(polisklant_t0, funs(sum))
+```
+```{r}
+polisklant_t0 %>% group_by(duurzaamheidswaarde) %>% 
+  summarise( aantal_klanten = n(),
+             auto = sum(ind_auto),
+             brand = sum(ind_brand),
+             zorgbasis = sum(ind_zorgbasis),
+             tot_polis = sum(tot_polis),
+             gem_polis_klant = sum(tot_polis)/n(),
+             tot_premie = sum(tot_premie),
+             gem_premie_klant = sum(tot_premie)/n(),
+             gem_premie_polis = sum(tot_premie)/sum(tot_polis))
+```
+
+Het polis-bestand op de voorafgaande periode:
+
+```{r}
+# creeer polis op klant-niveau bestand van t-1
+polisklant_t1 <- polis_t1 %>%
+  group_by(klantnummer) %>%
+  summarise(tot_polis = n(),
+            tot_premie = sum (bdrnettopremie, na.rm = TRUE))
+polisklant_zorg_t1 <- polis_t1 %>%
+  filter (commercieelproduct %in% c('Zorg Aanvullend', 'Zorg Aanvullend Doelgroeppakket', 'Zorg Aanvullend Modulair', 'Zorg Aanvullend Zorgzaam', 'Zorg Basis', 'Zorg Tand Modulair')) %>%
+  group_by(klantnummer) %>%
+  summarise(tot_zorg = n(),
+            tot_zorg_premie = sum(bdrnettopremie, na.rm = TRUE))
+polisklant_zorgbasis_t1 <- polis_t1 %>%
+  filter (commercieelproduct=='Zorg Basis') %>%
+  group_by(klantnummer) %>%
+  summarise(tot_zorgbasis = n(),
+            tot_zorgbasis_premie = sum (bdrnettopremie, na.rm = TRUE))
+polisklant_zorgbasis_t1$ind_zorgbasis <- 1
+polisklant_zekur_t1 <- polis_t1 %>%
+  filter (merk=='ZEKUR') %>%
+  group_by(klantnummer) %>%
+  summarise(tot_zekur = n(),
+            tot_zekur_premie = sum(bdrnettopremie, na.rm = TRUE))
+polisklant_auto_t1 <- polis_t1 %>%
+  filter (commercieelproduct=='Auto') %>%
+  group_by(klantnummer) %>%
+  summarise(tot_auto = n(),
+            tot_auto_premie = sum(bdrnettopremie, na.rm = TRUE))
+polisklant_auto_t1$ind_auto <- 1
+polisklant_brand_t1 <- polis_t1 %>%
+  filter (commercieelproduct %in% c('Kostbaarheden', 'Wonen')) %>%
+  group_by(klantnummer) %>%
+  summarise(tot_brand = n(),
+            tot_brand_premie = sum (bdrnettopremie, na.rm = TRUE))
+polisklant_brand_t1$ind_brand <- 1
+
+polisklant_t1_tot <- polisklant_t1
+polisklant_t1_tot <- full_join(polisklant_t1_tot, polisklant_zorg_t1, by= "klantnummer")
+polisklant_t1_tot <- full_join(polisklant_t1_tot, polisklant_zorgbasis_t1, by= "klantnummer")
+polisklant_t1_tot <- full_join(polisklant_t1_tot, polisklant_zekur_t1, by= "klantnummer")
+polisklant_t1_tot <- full_join(polisklant_t1_tot, polisklant_auto_t1, by= "klantnummer")
+polisklant_t1_tot <- full_join(polisklant_t1_tot, polisklant_brand_t1, by= "klantnummer")
+polisklant_t1_tot$ind_zekur_excl <- if_else (polisklant_t1_tot$tot_zekur==polisklant_t1_tot$tot_polis, 1,0)
+polisklant_t1_tot <- polisklant_t1_tot %>% mutate_all(funs(replace(., is.na(.), 0)))
+polisklant_t1_tot$duurzaamheidswaarde <- polisklant_t1_tot$ind_auto + polisklant_t1_tot$ind_brand + polisklant_t1_tot$ind_zorgbasis
+polisklant_t1_tot$duurzaamheidswaarde_premie <- polisklant_t1_tot$tot_auto_premie + polisklant_t1_tot$tot_brand_premie +  polisklant_t1_tot$tot_zorgbasis_premie
+polisklant_t1 <- polisklant_t1_tot
+rm(polisklant_auto_t1, polisklant_brand_t1, polisklant_zekur_t1, polisklant_zorg_t1, polisklant_zorgbasis_t1, polisklant_t1_tot)
+```
+```{r}
+summarise_all(polisklant_t1, funs(sum))
+```
+
+#####Bepalen van de target-populatie:  
+Klanten :  
+- KlantSegment = Particulier  
+- Klanten-beweging categorie: exit, stay, new.  Nog te bepalen of we ook de exit & new klanten meenemen in de modelering.
+
+```{r}
+klant_t0_trgt <- filter (klant_t0, klantsegment == "Particulier")
+klant_t1_trgt <- filter (klant_t1, klantsegment == "Particulier")
+klant_t0_trgt <- select (klant_t0_trgt, klantnummer)
+klant_t1_trgt <- select (klant_t1_trgt, klantnummer)
+klant_t0_trgt$t0 <- 1
+klant_t1_trgt$t1 <- 1
+klant_trgt <- full_join (klant_t0_trgt, klant_t1_trgt, by = "klantnummer")
+klant_trgt <- klant_trgt %>% mutate_all(funs(replace(., is.na(.), 0)))
+
+klant_trgt$klant_beweging  <- if_else (klant_trgt$t0+klant_trgt$t1 == 2, 'stay',
+                                       if_else (klant_trgt$t0 == 1 & klant_trgt$t1 == 0, 'new',
+                                                if_else (klant_trgt$t0 == 0 & klant_trgt$t1 == 1 , 'exit', 'error')))
+```
+```{r}
+klant_trgt %>% group_by(klant_beweging) %>% summarise(aant_klanten = n())
+```
+
+Verder verfijning van klanten target-definitie op basis van product, merk:    
+Klanten met ZEKUR product, controleer of de klant enkel ZEKUR producten heeft.  
++ indien enkel ZEKUR, dan niet in de target  
++ indien nog andere merken dan ZEKUR wel in de target-groep 
+
+Target-definitie voor de zorg-campagne:  
+Te bepalen wat de target gaat zijn en waarvoor we een model gaan bouwen:  
++ churn:  
+- op stay-populatie  (scope van de POC)  
+- of ook op exit-populatie  
++ acquisitie:  
+- op stay-populatie (scope van de POC)  
+- of ook op new-populatie door bijvoorbeeld te modeleren op klanten die in het verleden Unive-klant waren maar vertrokken zijn (winback op ex-klanten) [noot: in deze oefening werd niet gekeken naar ex-klanten]
+
+```{r}
+# creeer target voor bewegingen zorgbasis
+klant_trgt_ref <- select (klant_trgt, klantnummer)
+zorg_t0_ref <- select(polisklant_t0, klantnummer, ind_zorgbasis)
+zorg_t1_ref <- select(polisklant_t1, klantnummer, ind_zorgbasis)
+zorg_trgt <- left_join(klant_trgt_ref, zorg_t0_ref, by = 'klantnummer')
+zorg_trgt <- left_join(zorg_trgt, zorg_t1_ref, by = 'klantnummer')
+zorg_trgt <- rename(zorg_trgt,
+                   ind_zorgbasis_t0 = ind_zorgbasis.x,
+                   ind_zorgbasis_t1 = ind_zorgbasis.y)
+zorg_trgt<- zorg_trgt %>% mutate_all(funs(replace(., is.na(.), 0)))
+# creeer indicaties bewegingen zorgbasis
+zorg_trgt$ind_zorgbasis_churn <- if_else(zorg_trgt$ind_zorgbasis_t0 == 0 & zorg_trgt$ind_zorgbasis_t1 == 1, 1, 0)
+
+zorg_trgt$ind_zorgbasis_groei <- if_else(zorg_trgt$ind_zorgbasis_t0 == 1 & zorg_trgt$ind_zorgbasis_t1 == 0, 1, 0)
+
+zorg_trgt$ind_zorgbasis_verlenging <- if_else(zorg_trgt$ind_zorgbasis_t0 == 1 & zorg_trgt$ind_zorgbasis_t1 == 1, 1, 0)
+
+zorg_stats <- left_join(klant_trgt, zorg_trgt, by = "klantnummer")
+```
+```{r}
+zorg_stats %>% group_by(klant_beweging) %>% summarise_all(funs(sum))
+# zorgbasis in t0 maar toch exit -- 
+```
+
+Impact op volume en waarde
+
+```{r}
+# verlies aantal zorgpolis & zorgpremie ? subsets zijn apart geselecteerd mogelijk dat een klant in het klantenbestand zit maar niet in polisbestand terwijl die wel een polis heeft en vice versa
+zorgpolis_premie_t0 <- polisklant_t0 %>%
+  select(klantnummer, tot_premie, tot_polis, tot_zorg, tot_zorg_premie)
+zorgpolis_premie_t0 <- rename(zorgpolis_premie_t0,
+                           tot_premie_t0 = tot_premie,
+                           tot_polis_t0 = tot_polis,
+                           tot_zorg_t0 = tot_zorg,
+                           tot_zorg_premie_t0 = tot_zorg_premie)
+zorgpolis_premie_t1 <- polisklant_t1 %>%
+  select(klantnummer, tot_premie, tot_polis, tot_zorg, tot_zorg_premie)
+zorgpolis_premie_t1 <- rename(zorgpolis_premie_t1,
+                           tot_premie_t1 = tot_premie,
+                           tot_polis_t1 = tot_polis,
+                           tot_zorg_t1 = tot_zorg,
+                           tot_zorg_premie_t1 = tot_zorg_premie)
+
+zorg_stats_fin <- left_join(zorg_stats, zorgpolis_premie_t0, by = 'klantnummer')
+zorg_stats_fin <- left_join(zorg_stats_fin, zorgpolis_premie_t1, by = 'klantnummer')
+zorg_stats_fin <- zorg_stats_fin %>% mutate_all(funs(replace(., is.na(.), 0)))
+zorg_stats_fin %>% group_by(klant_beweging, ind_zorgbasis_churn, ind_zorgbasis_groei, ind_zorgbasis_verlenging) %>%
+  summarise( tot_klanten = n(),
+    tot_zorgpolis_t0 = sum (tot_zorg_t0),
+    tot_zorgpolis_t1 = sum (tot_zorg_t1),
+    tot_zorgpolis_premie_t0 = sum(tot_zorg_premie_t0),
+    tot_zorgpolis_premie_t1 = sum(tot_zorg_premie_t1),
+    tot_polis_t0= sum(tot_polis_t0),
+    tot_polis_t1 = sum(tot_polis_t1),
+    tot_premie_t0 = sum(tot_premie_t0),
+    tot_premie_t1 = sum(tot_premie_t1))
+```
+
+#####Features klanten contact:  
+Commerciele communicatie door Unive Centraal : gegevens nog niet beschikbaar  
+Contact van Unive Stad en Land :  open vraag ? over hoeveel maanden tellen ?  
++ totaal aantal verzoeken  
++ totaal aantal contacten  
++ verzoeken om informatie / advies   
++ verzoeken ivm het product zorg ('Zorgzaam', 'Zorg SZVK', 'Zorg collectief', 'Zorg', 'Ziekteverzuim')   
++ verzoeken ivm klacht   
++ verzoeken ivm schade   
++ verzoeken ivm campagnes (campagnenaam in actie-codering)  
++ verzoeken ivm het afsluiten van een offerte  
++ contacten via email  
++ contacten via persoonlijke benadering  
++ contacten via outbound telefoon  
++ contacten door inbound bellen van klant  
+
+```{r}
+contactklant <- contact_sl %>%
+  group_by(klantnummer) %>%
+  summarise(tot_contact = n(),
+            tot_verzoeken = n_distinct(verzoekid))
+
+contact_verzoek <- contact_sl %>%
+  group_by(verzoekid, klantnummer) %>%
+  summarise(productomschrijving = max(productomschrijving),
+            verzoektypeomschrijving = max(verzoektypeomschrijving),
+            campagneomschrijving = max(campagneomschrijving),
+            ind_camp_sl = max(ind_camp_sl),
+            verzoekdatumcreatie = min(verzoekdatumcreatie),
+            laatstenotitiedatum = max(notitiecreatiedatum))
+contact_verzoek$dagenopenverzoek <- contact_verzoek$laatstenotitiedatum - contact_verzoek$verzoekdatumcreatie
+
+contactklant_zorg <- contact_verzoek %>%
+  filter (productomschrijving %in% c('Zorgzaam', 'Zorg SZVK', 'Zorg collectief', 'Zorg', 'Ziekteverzuim')) %>%
+  select(klantnummer) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_verzoek_zorg = n())
+
+contactklant_klacht <- contact_verzoek %>%
+  filter (verzoektypeomschrijving == 'Klacht') %>%
+  select(klantnummer) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_verzoek_klacht = n())
+
+contactklant_info <- contact_verzoek %>%
+  filter (verzoektypeomschrijving == 'Informatie/Advies') %>%
+  select(klantnummer) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_verzoek_info = n())
+
+contactklant_schade <- contact_verzoek %>%
+  filter (verzoektypeomschrijving == 'Schade') %>%
+  select(klantnummer) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_verzoek_schade = n())
+
+contactklant_offerte <- contact_verzoek %>%
+  filter (verzoektypeomschrijving == 'Offerte/Afsluiten') %>%
+  select(klantnummer) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_verzoek_offerte = n())
+
+contactklant_camp_sl <- contact_verzoek %>%
+  filter (ind_camp_sl == 1) %>%
+  select(klantnummer) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_verzoek_camp_sl = n())
+
+contact_inbound <- contact_sl %>%
+  filter (kanaal == 'Inbound Telefoon') %>%
+  group_by(klantnummer) %>%
+  summarise(aant_cont_inbound = n())
+
+contact_email <- contact_sl %>%
+  filter (kanaal == 'Email') %>%
+  group_by(klantnummer) %>%
+  summarise(aant_cont_email = n())
+
+contact_outbound <- contact_sl %>%
+  filter (kanaal %in% c('Outbound Telefoon')) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_cont_outbound = n())
+
+contact_pers <- contact_sl %>%
+  filter (kanaal %in% c('Buitendienst Persoonlijk', 'Kantoor Persoonlijk')) %>%
+  group_by(klantnummer) %>%
+  summarise(aant_cont_pers = n())
+
+contactklant <- left_join(contactklant, contact_email, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contact_inbound, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contact_outbound, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contact_pers, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contactklant_camp_sl, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contactklant_info, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contactklant_klacht, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contactklant_offerte, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contactklant_schade, by = 'klantnummer' )
+contactklant <- left_join(contactklant, contactklant_zorg, by = 'klantnummer' )
+
+contactklant <- contactklant %>% mutate_all(funs(replace(., is.na(.), 0)))
+rm(contact_email, contact_inbound, contact_outbound, contact_pers, contactklant_camp_sl, contactklant_info, contactklant_klacht, contactklant_offerte, contactklant_schade, contactklant_zorg)
+
+contact_sl %>%
+  summarise(freq_contacten=n(),
+            freq_verzoeken=n_distinct(verzoekid),
+            freq_klanten = n_distinct(klantnummer))
+
+```
+```{r}
+summarise_all(contactklant, funs(sum))
+```
+
+#####Exploratory analysis  
+
+laad analysis R packages
+```{r}
+#install.packages("survival")
+library(survival)
+```
+
+laad functies
+```{r}
+# functie om een one way anova uit te voeren op meerdere variabelen
+multi.aov <- function(fun = aov, df, vars, group.var, ...) {
+  sapply(simplify = FALSE,                                    # sapply(simplify=T) better, elements named
+         vars,                                                # loop on vector of outcome variable names
+         function(var) {
+           formula <- as.formula(paste(var, "~", group.var))# create a formula with outcome and grouping var.
+           summary(fun(data = df, formula, ...))                     # perform test with a given fun, default t.test
+         }
+  )
+}
+
+```
+
+```{r}
+# prepare datasets for analysis
+klant_beweging_agg <- left_join(klant_trgt, polisklant_t0, by ='klantnummer')
+klant_beweging_agg <- left_join(klant_beweging_agg, polisklant_t1, by='klantnummer')
+klant_beweging_agg <- left_join(klant_beweging_agg, contactklant, by ='klantnummer')
+klant_beweging_agg <- select(klant_beweging_agg, -klantnummer, -t0, -t1)
+klant_beweging_agg <- klant_beweging_agg %>% mutate_all(funs(replace(., is.na(.), 0)))
+klant_beweging_agg$aantal_klanten <- 1
+
+zorg_beweging_agg <- left_join(klant_trgt, zorg_trgt, by = 'klantnummer')
+zorg_beweging_agg$zorg_beweging <- if_else(zorg_beweging_agg$ind_zorgbasis_churn == 1, 'churn',
+                                           if_else(zorg_beweging_agg$ind_zorgbasis_groei == 1, 'groei',                                     if_else(zorg_beweging_agg$ind_zorgbasis_verlenging == 1, 'verlenging', 'geen_zorg')))
+zorg_beweging_agg <- left_join(zorg_beweging_agg, polisklant_t0, by = 'klantnummer')
+#zorg_beweging_agg <- left_join(zorg_beweging_agg, polisklant_t1, by = 'klantnummer')
+zorg_beweging_agg <- left_join(zorg_beweging_agg, contactklant, by = 'klantnummer')
+zorg_beweging_agg$aantal_klanten <- 1
+zorg_beweging_agg <- select(zorg_beweging_agg, -klantnummer, -t0,-t1, -klant_beweging)
+zorg_beweging_agg <- zorg_beweging_agg %>% mutate_all(funs(replace(., is.na(.), 0)))
+
+
+klant_beweging_hm <- klant_beweging_agg %>% 
+  group_by(klant_beweging) %>%
+  summarise_all(funs(sum))
+
+klant_beweging_hm.segm <- klant_beweging_agg %>% 
+  group_by(klant_beweging) %>%
+  summarise_all(funs(mean))
+
+klant_beweging_hm.base <- klant_beweging_agg %>% 
+  summarise_all(funs(mean))
+
+zorg_beweging_hm <- zorg_beweging_agg %>%
+  group_by(zorg_beweging) %>%
+  summarise_all(funs(sum))
+
+zorg_beweging_hm.segm <- zorg_beweging_agg %>% 
+  group_by(zorg_beweging) %>%
+  summarise_all(funs(mean))
+
+zorg_beweging_hm.base <- zorg_beweging_agg %>% 
+  summarise_all(funs(mean))
+
+
+```
+
+
+Run anova klantbeweging
+Vul parameters in:
+dataframe:
+group-var
+```{r}
+# retrieving the list of kpi's from the dataframe
+df <- klant_beweging_agg
+grv <- "klant_beweging"
+# 
+df$klant_beweging <- as.factor(df$klant_beweging)
+# kpi variabelen
+v <- names(df)
+v <- v[-c(1:1)]
+
+df <- klant_beweging_agg
+df$klant_beweging <- as.factor(df$klant_beweging)
+v <- names(df)
+vx <- v[2]
+gr_v <- v[1]
+temp.aov <- list()
+tukey <- list()
+mat <- list()
+tuk <- TukeyHSD(aov(vx ~ gr_v, data=df))
+x <-  rownames(tuk$`df[, 1]`)
+y <- nrow(x)
+for ( i in 2:length(v)){
+  temp = v[i]
+  temp.aov[[i]] = aov(df[,temp]~ df[,1], data=df)
+  #tukey[[i]]=TukeyHSD(temp.aov[[i]])
+  #mat[[i]] <- matrix(tukey[[i]]$`df[, 1]`,6)[,4]
+    }
+names(temp.aov)=v
+names(tukey)=v
+names(mat) <- v
+
+
+
+
+
+
+# run aov function over data
+res.multi.aov <-  multi.aov(fun = aov,
+                            df = df,
+                            vars = v,
+                            group.var = grv)
+# chunk to find the p-value per kpi when performing a one-way anova
+ul_res.multi.aov <- unlist(res.multi.aov)
+ul_res.multi.aov <- as_tibble(ul_res.multi.aov)
+ul_res.multi.aov$var_names <- rownames(ul_res.multi.aov)
+ul_res.multi.aov$kpi <-  substr(ul_res.multi.aov$var_names, 1, regexpr('[.]', ul_res.multi.aov$var_names)-1)
+ul_res.multi.aov$stat <- substr(ul_res.multi.aov$var_names, regexpr('[.]', ul_res.multi.aov$var_names)+1, nchar(ul_res.multi.aov$var_names))
+ul_res.multi.aov <- ul_res.multi.aov %>% 
+  filter(stat == "Pr(>F)1")
+ul_res.multi.aov <- rename(ul_res.multi.aov, pvalue = value) 
+ul_res.multi.aov <- select(ul_res.multi.aov, kpi, pvalue)
+
+```
+
+Genereer Tukey test
+```{r}
+# chunk to retrieve the p-values from the Tukey test
+# preparing a work df to which the p-value of the Tukey test will be bound
+# when rerunning the Tukey test or when passing new data for a Tukey test, remove the work dataframe: x
+# rm(x)
+tuk <- TukeyHSD(aov(df[,2] ~ df[,1], data=df))
+tuk <- TukeyHSD(aov(df$tot_polis ~ klant_beweging, data=df))
+
+as.data.frame(klant_beweging_agg)
+#tuk_ <- TukeyHSD(aov(klant_beweging_agg[,2] ~ klant_beweging, data=klant_beweging_agg))
+#tuk_ <- TukeyHSD(aov(colnames(klant_beweging_agg[,2]) ~ klant_beweging, data=klant_beweging_agg))
+tuk_ <- TukeyHSD(aov(klant_beweging_agg$tot_polis ~ klant_beweging, data=df))
+x <- as_tibble(tuk_$klant_beweging)
+y <- nrow(tuk_$klant_beweging)
+
+```
+
+
+```{r}
+as.data.frame(klant_beweging_agg)
+klant_beweging_agg$klant_beweging <- as.factor(klant_beweging_agg$klant_beweging)
+# enter the number of combinations of the grouping values
+for (i in 2:ncol(df)) {
+  tk  <- TukeyHSD((aov(klant_beweging_agg[,i]~klant_beweging, data=df)))
+  mat <- matrix(tk$klant_beweging, y)[,4]
+  x <- cbind(x, mat)
+  }
+# trimming the tuk-df
+x <- x[-c(1:4)]
+# adding the names of the kpi
+kpi <- colnames
+kpi <- kpi[-c(1:1)]
+x <- set_names(x,v)
+# adding the grouping combinaties
+grp_val <- rownames(tuk$base)
+x$grp_val <- grp_val
+# preparing the tibble for the graph
+x.graph <- melt(x)
+
+```
+
+
+
+
+
+Klantenbewegingen - kpi's   
+noot: informatie is niet representatief
+
+```{r}
+klant_beweging_hm.segm.melt <- melt(klant_beweging_hm.segm)
+klant_beweging_hm.base.melt <- melt(klant_beweging_hm.base)
+klant_beweging_hm.ref <- left_join(klant_beweging_hm.segm.melt, klant_beweging_hm.base.melt, by = "variable")
+klant_beweging_hm.ref$avg <- klant_beweging_hm.ref$value.x / klant_beweging_hm.ref$value.y
+klant_beweging_hm.ref$avg1 <- cut(klant_beweging_hm.ref$avg,breaks = c(0, 0.25, 0.5, 0.75, 1.25, 1.5, 2, 2.5, 3, +Inf),right = FALSE)
+
+hm.palette <- colorRampPalette(rev(brewer.pal(9, 'Spectral')), space='Lab')
+
+ggplot(klant_beweging_hm.ref,  aes(x = variable, y = klant_beweging)) +  
+  geom_tile(aes(fill = avg1), colour = "white") +
+  coord_equal() +
+  coord_flip() +
+  scale_fill_brewer (palette = 'Spectral') + 
+  ylab('klant beweging') +
+  xlab('kpi') +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1),
+        axis.text.y = element_text(size=8))
+
+```
+
+Zorgbewegingen - kpi's  
+noot: informatie is niet representatief
+
+```{r}
+zorg_beweging_hm.segm.melt <- melt(zorg_beweging_hm.segm)
+zorg_beweging_hm.base.melt <- melt(zorg_beweging_hm.base)
+zorg_beweging_hm.ref <- left_join(zorg_beweging_hm.segm.melt, zorg_beweging_hm.base.melt, by = "variable")
+
+zorg_beweging_hm.ref$avg <- zorg_beweging_hm.ref$value.x / zorg_beweging_hm.ref$value.y
+zorg_beweging_hm.ref$avg1 <- cut(zorg_beweging_hm.ref$avg,breaks = c(0, 0.25, 0.5, 0.75, 1.25, 1.5, 2, 2.5, 3, +Inf),right = FALSE)
+
+
+ggplot(zorg_beweging_hm.ref, aes(x = variable, y = zorg_beweging)) +  
+  geom_tile(aes(fill = avg1), colour = "white") +
+  coord_equal() +
+  coord_flip() +
+  scale_fill_brewer (palette = 'Spectral') +
+  ylab('zorg beweging') +
+  xlab('kpi') +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1),
+        axis.text.y = element_text(size=8))
+
+```
